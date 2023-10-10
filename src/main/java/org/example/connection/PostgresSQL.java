@@ -1,9 +1,7 @@
 package org.example.connection;
 
-import com.mysql.cj.x.protobuf.MysqlxPrepare;
 import io.github.cdimascio.dotenv.Dotenv;
 
-import javax.xml.transform.Result;
 import java.sql.*;
 
 public class PostgresSQL implements DatabaseInterface {
@@ -82,9 +80,12 @@ public class PostgresSQL implements DatabaseInterface {
     }
 
     public String alterTableAddPrimaryKeys(String tableName, String fields) {
-        return DatabaseCommands.ALTER_TABLE.query + tableName +
-                DatabaseCommands.ADD_CONSTRAINT.query + " PK_" + tableName +
-                DatabaseCommands.PRIMARY_KEY.query + " (" + fields + ")";
+        StringBuilder sb = new StringBuilder();
+        sb.append(DatabaseCommands.ALTER_TABLE.query).append(tableName)
+            .append(DatabaseCommands.ADD_CONSTRAINT.query).append(" PK_").append(tableName)
+            .append(DatabaseCommands.PRIMARY_KEY.query).append(" (").append(fields).append(")");
+
+        return sb.toString();
     }
 
     public String save (String query) {
@@ -95,7 +96,6 @@ public class PostgresSQL implements DatabaseInterface {
         try (Connection connection = connect()) {
 
             PreparedStatement statement = connection.prepareStatement(DatabaseCommands.SELECT.query + tableName);
-            System.out.println(DatabaseCommands.SELECT.query + tableName);
             return statement.executeQuery();
 
         } catch (SQLException e) {
@@ -104,4 +104,69 @@ public class PostgresSQL implements DatabaseInterface {
         }
     }
 
+    public ResultSet getModelFromSql(String tableName, String[] fieldsName, Object[] values) {
+        StringBuilder sb = new StringBuilder();
+
+        sb.append(DatabaseCommands.SELECT.query);
+        sb.append(tableName);
+
+        sb.append(where(fieldsName, values));
+
+        try (Connection connection = connect()) {
+            return connection.prepareStatement(sb.toString()).executeQuery();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public String where(String[] fieldsName, Object[] values) {
+        StringBuilder sb = new StringBuilder();
+
+        for(int i = 0; i < fieldsName.length; i++) {
+            boolean addedWhere = false;
+            if (i == 0 && values[0] != null) {
+                sb.append(" WHERE ").append(fieldsName[0]).append(" = ").append(values[0]);
+                addedWhere = true;
+            }
+
+            if (i != 0 && values[i] != null && !addedWhere) {
+                sb.append(" WHERE ").append(fieldsName[i]).append(" = ").append(values[i]);
+                addedWhere = true;
+            }
+
+            if (i != 0 && values[i] != null && addedWhere) {
+                sb.append("\nAND ").append(fieldsName[i]).append(" = ").append(values[i]);
+            }
+        }
+        return sb.toString();
+    }
+
+    public ResultSet existsByPrimaryKey(String tableName, String[] fieldNames, Object[] values) {
+        StringBuilder sb = new StringBuilder();
+
+        sb.append(DatabaseCommands.SELECT_COUNT.query).append(tableName);
+
+        sb.append(where(fieldNames, values));
+
+        try (Connection connection = connect()) {
+            return connection.prepareStatement(sb.toString()).executeQuery();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public boolean delete(String tableName, String[] fieldNames, Object[] values) {
+        StringBuilder sb = new StringBuilder();
+
+        sb.append(DatabaseCommands.DELETE.query).append(tableName);
+
+        sb.append(where(fieldNames, values));
+
+        try (Connection connection = connect()) {
+            executeQuery(sb.toString());
+            return true;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
 }

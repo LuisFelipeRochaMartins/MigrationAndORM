@@ -1,13 +1,13 @@
 package org.example.migration;
 
-import java.lang.reflect.InvocationTargetException;
+import org.example.connection.PostgresSQL;
 
 public class Main {
 
-    public static void main(String[] args) throws NoSuchMethodException, InvocationTargetException, IllegalAccessException, InstantiationException {
+    public static void main(String[] args) {
         Teste teste = new Teste();
 
-        System.out.println(Schema.getInstance().getAllFromSql(teste));
-
+        teste.setId(2L);
+        System.out.println(teste.exists());
     }
 }

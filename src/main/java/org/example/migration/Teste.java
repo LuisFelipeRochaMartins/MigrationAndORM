@@ -14,10 +14,11 @@ public class Teste extends ModelORM {
 
     }
 
-    public Teste(String nome, String cpf, Integer age) {
+    public Teste(Long id, String nome, String cpf, Integer age) {
+        this.id   = id;
         this.nome = nome;
-        this.cpf = cpf;
-        this.age = age;
+        this.cpf  = cpf;
+        this.age  = age;
     }
 
     public Long getId() {
@@ -55,6 +56,7 @@ public class Teste extends ModelORM {
     @Override
     public String toString() {
         final StringBuilder sb = new StringBuilder("Teste");
+        sb.append("id = ").append(id);
         sb.append(" nome='").append(nome).append('\'');
         sb.append(", cpf='").append(cpf).append('\'');
         sb.append(", age=").append(age);

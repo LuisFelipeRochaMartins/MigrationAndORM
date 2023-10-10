@@ -8,7 +8,9 @@ public enum DatabaseCommands {
     ALTER_TABLE(" ALTER TABLE "),
     ADD_CONSTRAINT(" ADD CONSTRAINT "),
     PRIMARY_KEY(" PRIMARY KEY "),
-    INSERT_INTO(" INSERT INTO ");
+    INSERT_INTO(" INSERT INTO "),
+    SELECT_COUNT(" SELECT COUNT(*) FROM "),
+    DELETE(" DELETE FROM ");
 
     public final String query;
 
