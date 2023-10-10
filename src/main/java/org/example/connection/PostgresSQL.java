@@ -162,11 +162,39 @@ public class PostgresSQL implements DatabaseInterface {
 
         sb.append(where(fieldNames, values));
 
-        try (Connection connection = connect()) {
-            executeQuery(sb.toString());
+        executeQuery(sb.toString());
+        return true;
+    }
+
+    public boolean update(String tableName, String[] fieldsToChange, Object[] values, String[] PKFields, Object[] PKValues) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(DatabaseCommands.UPDATE.query).append(tableName);
+
+        sb.append(set(fieldsToChange, values));
+        sb.append(where(PKFields, PKValues));
+
+        if (sb.toString().contains("SET")) {
+           executeQuery(sb.toString());
             return true;
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
         }
+        return false;
+    }
+
+    private String set(String[] fieldsToChange, Object[] values) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(" SET ");
+
+        for (int i = 0; i < fieldsToChange.length; i++) {
+            if (values[i] != null) {
+                sb.append(fieldsToChange[i]).append(" = ").append(values[i]).append(", ");
+            }
+        }
+        if (sb.toString().contains(",")) {
+            int index = sb.lastIndexOf(",");
+            sb.deleteCharAt(index);
+        } else {
+            return null;
+        }
+        return sb.toString();
     }
 }

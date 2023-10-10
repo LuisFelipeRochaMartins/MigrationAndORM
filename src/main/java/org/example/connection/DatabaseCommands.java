@@ -10,7 +10,8 @@ public enum DatabaseCommands {
     PRIMARY_KEY(" PRIMARY KEY "),
     INSERT_INTO(" INSERT INTO "),
     SELECT_COUNT(" SELECT COUNT(*) FROM "),
-    DELETE(" DELETE FROM ");
+    DELETE(" DELETE FROM "),
+    UPDATE(" UPDATE ");
 
     public final String query;
 

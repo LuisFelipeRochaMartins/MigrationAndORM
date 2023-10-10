@@ -12,6 +12,10 @@ public class ModelORM {
      * Save the current Model in the table.
      */
     public void save() {
+        if (exists()) {
+            update();
+            return;
+        }
         Schema.getInstance().save(this);
     }
 
@@ -76,7 +80,7 @@ public class ModelORM {
      */
     public boolean update() {
         if (exists()) {
-            Schema.getInstance().update();
+            Schema.getInstance().update(this);
             return true;
         }
         return false;

@@ -103,7 +103,7 @@ public class Schema {
 
         for (Field field : fields) {
             try {
-                Method method = o.getClass().getMethod("get" + field.getName());
+                Method method = o.getClass().getMethod("get" + toUpperCamelCase(field.getName()));
                 Object value = method.invoke(o);
                 if (value == null) {
                     sb.append("null");
@@ -191,7 +191,7 @@ public class Schema {
     /**
      * Save a new register in the database.
      *
-     * @param o
+     * @param o Object
      */
     public void save(Object o) {
         PostgresSQL.getInstance().executeQuery(PostgresSQL.getInstance().save(getInsertSql(o)));
@@ -259,8 +259,7 @@ public class Schema {
             }
 
             object = fetch(o, fieldName, values);
-        } catch (InstantiationException | IllegalAccessException | InvocationTargetException |
-                 NoSuchMethodException e) {
+        } catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
             throw new RuntimeException(e);
         }
         return object;
@@ -277,24 +276,30 @@ public class Schema {
     private Object fetch(Object o, String[] fieldNames, Object[] values) {
         ResultSet rs = PostgresSQL.getInstance().getModelFromSql(getClassNameForTable(o), fieldNames, values);
 
+        Object object = null;
         try {
-            while (rs.next()) {
-                Field[] fields = o.getClass().getDeclaredFields();
+            object = o.getClass().getConstructor().newInstance();
+            try {
+                while (rs.next()) {
+                    Field[] fields = object.getClass().getDeclaredFields();
 
-                for (Field field : fields) {
-                    Method method = o.getClass().getMethod("set" + toUpperCamelCase(field.getName()), field.getType());
-                    Object value = rs.getObject(field.getName());
+                    for (Field field : fields) {
+                        Method method = object.getClass().getMethod("set" + toUpperCamelCase(field.getName()), field.getType());
+                        Object value = rs.getObject(field.getName());
 
-                    if (value != null) {
-                        method.invoke(o, value);
+                        if (value != null) {
+                            method.invoke(object, value);
+                        }
                     }
                 }
+            } catch (SQLException | NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+                throw new RuntimeException(e);
             }
-        } catch (SQLException | NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+        } catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
             throw new RuntimeException(e);
         }
 
-        return o;
+        return object;
     }
 
     /**
@@ -362,9 +367,46 @@ public class Schema {
     /**
      * Update a register in the database if it exists.
      *
+     * @param o Object
      * @return boolean
      */
-    public boolean update() {
-        return true;
+    public boolean update(Object o) {
+        Object   object = getObjectFromKeys(o);
+        Field[]  fields = o.getClass().getDeclaredFields();
+        String[] fieldsToChange = new String[fields.length];
+        Object[] values         = new String[fields.length];
+        String[] PKFields       = new String[fields.length];
+        Object[] PKvalues       = new String[fields.length];
+
+        for (int i = 0; i < fields.length; i++) {
+
+            try {
+                if (!fields[i].isAnnotationPresent(PrimaryKey.class)) {
+                    Method method1 = o.getClass().getMethod("get" + toUpperCamelCase(fields[i].getName()));
+                    Method method2 = object.getClass().getMethod("get" + toUpperCamelCase(fields[i].getName()));
+
+                    Object value1  = method1.invoke(o);
+                    Object value2  = method2.invoke(object);
+
+                    if (value1 != value2 && value1 != null && value2 != null && !value1.equals("'null'") && !value2.equals("'null'")) {
+                        fieldsToChange[i] = fields[i].getName();
+                        if (fields[i].getType().getSimpleName().equals("String")) {
+                            values[i] = "'" + value1 + "'";
+                        } else {
+                            values[i] = String.valueOf(value1);
+                        }
+                    }
+                } else {
+                    Object value = o.getClass().getMethod("get" + toUpperCamelCase(fields[i].getName())).invoke(o);
+                    if (value != null) {
+                        PKvalues[i] = String.valueOf(value);
+                        PKFields[i] = fields[i].getName();
+                    }
+                }
+            } catch (NoSuchMethodException | InvocationTargetException | IllegalAccessException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return PostgresSQL.getInstance().update(getClassNameForTable(o), fieldsToChange, values, PKFields, PKvalues);
     }
 }
