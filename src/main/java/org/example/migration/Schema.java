@@ -1,7 +1,9 @@
 package org.example.migration;
 
 import org.example.connection.PostgresSQL;
+import org.example.migration.annotations.Column;
 import org.example.migration.annotations.PrimaryKey;
+import org.example.migration.annotations.Table;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -26,7 +28,6 @@ public class Schema {
         return schema;
     }
 
-    // TODO: 09/10/2023 create a new Annotation to set the table name and return it.
     /**
      * Get the class name for table
      *
@@ -34,10 +35,13 @@ public class Schema {
      * @return String
      */
     private String getClassNameForTable(Object o) {
+        if (o.getClass().isAnnotationPresent(Table.class) && o.getClass().getAnnotation(Table.class).name() != null) {
+            return o.getClass().getAnnotation(Table.class).name();
+        }
         String[] classname = o.getClass().getName().split("\\.");
         return classname[classname.length - 1].toLowerCase();
     }
-    // TODO: 09/10/2023 create an annotation to set the column name
+
     /**
      * Get fields and it's type.
      *
@@ -50,7 +54,7 @@ public class Schema {
         Field[] fields = o.getClass().getDeclaredFields();
 
         for (Field field : fields) {
-            sb.append(field.getName()).append(" ");
+            sb.append(getFieldName(field));
             sb.append(getType(field)).append(", ");
         }
         int index = sb.lastIndexOf(",");
@@ -94,7 +98,11 @@ public class Schema {
         sb.append("(");
 
         for (Field field : fields) {
-            sb.append(field.getName()).append(",");
+            if (field.isAnnotationPresent(Column.class) && field.getAnnotation(Column.class).name() != null) {
+                sb.append(field.getAnnotation(Column.class).name()).append(",");
+            } else {
+                sb.append(field.getName()).append(",");
+            }
         }
         int index = sb.lastIndexOf(",");
         sb.deleteCharAt(index);
@@ -157,13 +165,35 @@ public class Schema {
      * @return String
      */
     private String getType(Field field) {
-        return DatabaseTypes.types.get(field.getType().getSimpleName());
+        StringBuilder sb = new StringBuilder();
+        if (DatabaseTypes.types.get(field.getType().getSimpleName()).equals("String")) {
+            sb.append(DatabaseTypes.types.get(field.getType().getSimpleName()));
+            if (field.getClass().isAnnotationPresent(Column.class)) {
+                sb.append("(").append(field.getClass().getAnnotation(Column.class).lenght()).append(")");
+            }
+        } else {
+            sb.append(DatabaseTypes.types.get(field.getType().getSimpleName()));
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Get the field name based if it has or not an annotation
+     * @param field Field
+     * @return String
+     */
+    private String getFieldName(Field field) {
+        if (field.isAnnotationPresent(Column.class) && field.getAnnotation(Column.class).name() != null) {
+            return field.getAnnotation(Column.class).name() + " ";
+        } else {
+            return field.getName() + " ";
+        }
     }
 
     /**
      * Create a table based on Model.
      *
-     * @param o
+     * @param o Object
      */
     public void create(Object o) {
         PostgresSQL.getInstance().executeQuery(PostgresSQL.getInstance().createTableIfNotExists(getClassNameForTable(o) + "(" + getFieldNameAndType(o)));
@@ -214,7 +244,13 @@ public class Schema {
 
                 for (Field field : fields) {
                     Method method = o.getClass().getMethod("set" + toUpperCamelCase(field.getName()), field.getType());
-                    Object value = rs.getObject(field.getName());
+
+                    Object value;
+                    if (field.isAnnotationPresent(Column.class) && field.getAnnotation(Column.class).name() != null) {
+                        value = rs.getObject(field.getAnnotation(Column.class).name());
+                    } else {
+                        value = rs.getObject(field.getName());
+                    }
 
                     if (value != null) {
                         method.invoke(object, value);
@@ -222,8 +258,7 @@ public class Schema {
                 }
                 objects.add(object);
             }
-        } catch (SQLException | NoSuchMethodException | InstantiationException | IllegalAccessException |
-                 InvocationTargetException e) {
+        } catch (SQLException | NoSuchMethodException | InstantiationException | IllegalAccessException | InvocationTargetException e) {
             throw new RuntimeException(e);
         }
         return objects;
@@ -285,7 +320,12 @@ public class Schema {
 
                     for (Field field : fields) {
                         Method method = object.getClass().getMethod("set" + toUpperCamelCase(field.getName()), field.getType());
-                        Object value = rs.getObject(field.getName());
+                        Object value;
+                        if (field.isAnnotationPresent(Column.class) && field.getAnnotation(Column.class).name() != null) {
+                            value = rs.getObject(field.getAnnotation(Column.class).name());
+                        } else {
+                            value = rs.getObject(field.getName());
+                        }
 
                         if (value != null) {
                             method.invoke(object, value);

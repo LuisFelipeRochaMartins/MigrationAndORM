@@ -9,17 +9,6 @@ public class ModelORM {
     }
 
     /**
-     * Save the current Model in the table.
-     */
-    public void save() {
-        if (exists()) {
-            update();
-            return;
-        }
-        Schema.getInstance().save(this);
-    }
-
-    /**
      * Create table.
      */
     public void create() {
@@ -49,6 +38,16 @@ public class ModelORM {
      */
     public Object refresh() {
         return Schema.getInstance().getObjectFromKeys(this);
+    }
+    /**
+     * Save the current Model in the table.
+     */
+    public void save() {
+        if (exists()) {
+            update();
+            return;
+        }
+        Schema.getInstance().save(this);
     }
 
     /**

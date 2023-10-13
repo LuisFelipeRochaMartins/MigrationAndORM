@@ -1,12 +1,20 @@
 package org.example.migration;
 
+import org.example.migration.annotations.Column;
 import org.example.migration.annotations.PrimaryKey;
+import org.example.migration.annotations.Table;
 
+
+@Table(name = "olaLuis")
 public class Teste extends ModelORM {
 
     @PrimaryKey
     private Long id;
 
+    @Column(
+            name = "testando",
+            lenght = 80
+    )
     private String nome;
     private String cpf;
     private Integer age;
@@ -56,8 +64,8 @@ public class Teste extends ModelORM {
     @Override
     public String toString() {
         final StringBuilder sb = new StringBuilder("Teste");
-        sb.append("id = ").append(id);
-        sb.append(" nome='").append(nome).append('\'');
+        sb.append("  id = ").append(id);
+        sb.append(", nome='").append(nome).append('\'');
         sb.append(", cpf='").append(cpf).append('\'');
         sb.append(", age=").append(age);
         return sb.toString();
