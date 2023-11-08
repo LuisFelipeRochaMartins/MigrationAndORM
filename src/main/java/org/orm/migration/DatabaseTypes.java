@@ -1,4 +1,4 @@
-package org.example.migration;
+package org.orm.migration;
 
 import java.util.HashMap;
 import java.util.Map;

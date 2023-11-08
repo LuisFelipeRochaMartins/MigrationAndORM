@@ -1,28 +1,32 @@
-package org.example.migration;
+package org.orm.migration;
 
-import org.example.migration.annotations.Column;
-import org.example.migration.annotations.PrimaryKey;
-import org.example.migration.annotations.Table;
+import org.orm.migration.annotations.OneToOne;
+import org.orm.migration.annotations.PrimaryKey;
+import org.orm.migration.annotations.Table;
 
+import java.awt.font.FontRenderContext;
 
-@Table(name = "olaLuis")
-public class Teste extends ModelORM {
+@Table(name = "tbpessoa")
+public class Pessoa extends ModelORM {
 
     @PrimaryKey
     private Long id;
 
-    @Column(
-            name = "testando",
-            lenght = 80
-    )
     private String nome;
     private String cpf;
     private Integer age;
-    public Teste() {
+
+    @OneToOne(
+            target = Endereco.class,
+            column = "id"
+    )
+    private Endereco endereco;
+
+    public Pessoa() {
 
     }
 
-    public Teste(Long id, String nome, String cpf, Integer age) {
+    public Pessoa(Long id, String nome, String cpf, Integer age) {
         this.id   = id;
         this.nome = nome;
         this.cpf  = cpf;
@@ -61,13 +65,22 @@ public class Teste extends ModelORM {
         this.age = age;
     }
 
+    public Endereco getEndereco() {
+        return endereco;
+    }
+
+    public void setEndereco(Endereco endereco) {
+        this.endereco = endereco;
+    }
+
     @Override
     public String toString() {
         final StringBuilder sb = new StringBuilder("Teste");
         sb.append("  id = ").append(id);
-        sb.append(", nome='").append(nome).append('\'');
-        sb.append(", cpf='").append(cpf).append('\'');
-        sb.append(", age=").append(age);
+        sb.append(", nome = '").append(nome).append('\'');
+        sb.append(", cpf = '").append(cpf).append('\'');
+        sb.append(", age = ").append(age).append('\'');
+        sb.append("endereco = ").append(endereco);
         return sb.toString();
     }
 }

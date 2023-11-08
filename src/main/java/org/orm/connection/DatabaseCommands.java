@@ -1,4 +1,4 @@
-package org.example.connection;
+package org.orm.connection;
 
 public enum DatabaseCommands {
     

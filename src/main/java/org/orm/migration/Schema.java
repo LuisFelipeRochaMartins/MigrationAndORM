@@ -1,17 +1,18 @@
-package org.example.migration;
+package org.orm.migration;
 
-import org.example.connection.PostgresSQL;
-import org.example.migration.annotations.Column;
-import org.example.migration.annotations.PrimaryKey;
-import org.example.migration.annotations.Table;
+import org.orm.connection.PostgresSQL;
+import org.orm.migration.annotations.Column;
+import org.orm.migration.annotations.OneToOne;
+import org.orm.migration.annotations.PrimaryKey;
+import org.orm.migration.annotations.Table;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 public class Schema {
 
@@ -35,7 +36,7 @@ public class Schema {
      * @return String
      */
     private String getClassNameForTable(Object o) {
-        if (o.getClass().isAnnotationPresent(Table.class) && o.getClass().getAnnotation(Table.class).name() != null) {
+        if (o.getClass().isAnnotationPresent(Table.class) && !o.getClass().getAnnotation(Table.class).name().isEmpty()) {
             return o.getClass().getAnnotation(Table.class).name();
         }
         String[] classname = o.getClass().getName().split("\\.");
@@ -75,15 +76,37 @@ public class Schema {
 
         for (Field field : fields) {
             if (field.isAnnotationPresent(PrimaryKey.class)) {
+                if (field.isAnnotationPresent(Column.class) && !field.getAnnotation(Column.class).name().isEmpty()) {
+                    sb.append(field.getAnnotation(Column.class).name()).append(",");
+                    continue;
+                }
                 sb.append(field.getName()).append(",");
             }
         }
-        int index = sb.lastIndexOf(",");
-        sb.deleteCharAt(index);
+        if (sb.toString().contains(",")) {
+            int index = sb.lastIndexOf(",");
+            sb.deleteCharAt(index);
+        }
 
         return sb.toString();
     }
 
+    public HashMap<String, String> getForeignTableAndColumns(Object o) {
+        Field[] fields = o.getClass().getDeclaredFields();
+        HashMap<String, String> foreign = new HashMap<>();
+
+        for(Field field : fields) {
+            if (field.isAnnotationPresent(OneToOne.class) && !field.getAnnotation(OneToOne.class).column().isEmpty()) {
+                Object object = field.getAnnotation(OneToOne.class).target();
+                for (Field newField : object.getClass().getDeclaredFields()) {
+                    if (newField.getName().equals(field.getAnnotation(OneToOne.class).column())) {
+                        foreign.put(getClassNameForTable(object), getFieldName(newField));
+                    }
+                }
+            }
+        }
+        return foreign;
+    }
     /**
      * Create the insert SQL.
      *
@@ -99,7 +122,11 @@ public class Schema {
 
         for (Field field : fields) {
             if (field.isAnnotationPresent(Column.class) && field.getAnnotation(Column.class).name() != null) {
-                sb.append(field.getAnnotation(Column.class).name()).append(",");
+                if (field.getAnnotation(Column.class).unique()) {
+                    sb.append(field.getAnnotation(Column.class).name()).append(" UNIQUE, ");
+                } else {
+                    sb.append(field.getAnnotation(Column.class).name()).append(",");
+                }
             } else {
                 sb.append(field.getName()).append(",");
             }
@@ -111,14 +138,23 @@ public class Schema {
 
         for (Field field : fields) {
             try {
-                Method method = o.getClass().getMethod("get" + toUpperCamelCase(field.getName()));
-                Object value = method.invoke(o);
+                Method method;
+                Object value;
+                if (field.isAnnotationPresent(OneToOne.class) && !field.getAnnotation(OneToOne.class).column().isEmpty()) {
+                    method = o.getClass().getMethod("get" + toUpperCamelCase(field.getName()));
+                    Object object = method.invoke(o);
+                    method = object.getClass().getMethod("get" + toUpperCamelCase(field.getAnnotation(OneToOne.class).column()));
+                    value = method.invoke(object);
+                } else {
+                    method = o.getClass().getMethod("get" + toUpperCamelCase(field.getName()));
+                    value = method.invoke(o);
+                }
                 if (value == null) {
                     sb.append("null");
                 } else if (field.getType().getSimpleName().equals("String")) {
-                    sb.append('\'').append(method.invoke(o)).append('\'');
+                    sb.append('\'').append(value).append('\'');
                 } else {
-                    sb.append(method.invoke(o));
+                    sb.append(value);
                 }
                 sb.append(',');
             } catch (IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
@@ -129,6 +165,28 @@ public class Schema {
         sb.deleteCharAt(index);
         sb.append(")");
 
+        return sb.toString();
+    }
+
+    public String foreignKeysAlterTable(Object o) {
+        StringBuilder sb = new StringBuilder();
+        String tableName = getClassNameForTable(o);
+
+        HashMap<String, String> foreign = getForeignTableAndColumns(o);
+        for(Field field : o.getClass().getDeclaredFields()) {
+            if (field.isAnnotationPresent(OneToOne.class)) {
+                for (Map.Entry<String, String> entry : foreign.entrySet()) {
+                    sb.append("ALTER TABLE ");
+                    sb.append(tableName);
+
+                    sb.append(" ADD CONSTRAINT ").append("FK_").append(tableName);
+                    sb.append(" FOREIGN KEY ");
+
+                    sb.append("(").append(field.getName()).append(")");
+                    sb.append(" REFERENCES ").append(entry.getKey()).append("(").append(entry.getValue()).append(");");
+                }
+            }
+        }
         return sb.toString();
     }
 
@@ -166,24 +224,37 @@ public class Schema {
      */
     private String getType(Field field) {
         StringBuilder sb = new StringBuilder();
-        if (DatabaseTypes.types.get(field.getType().getSimpleName()).equals("String")) {
+        if (field.isAnnotationPresent(OneToOne.class) && field.getAnnotation(OneToOne.class).target() != void.class) {
+            try {
+                Object o = field.getAnnotation(OneToOne.class).target().getDeclaredConstructor().newInstance();
+                for (Field field1 : o.getClass().getDeclaredFields()) {
+                    if (field1.getName().equals(field.getAnnotation(OneToOne.class).column())) {
+                        sb.append(DatabaseTypes.types.get(field1.getType().getSimpleName()));
+                    }
+                }
+            } catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
+                throw new RuntimeException(e);
+            }
+            return sb.toString();
+        } else if (field.getType().getSimpleName().equals("String")) {
             sb.append(DatabaseTypes.types.get(field.getType().getSimpleName()));
             if (field.getClass().isAnnotationPresent(Column.class)) {
-                sb.append("(").append(field.getClass().getAnnotation(Column.class).lenght()).append(")");
+                sb.append("(").append(field.getClass().getAnnotation(Column.class).length()).append(")");
             }
+            return sb.toString();
         } else {
             sb.append(DatabaseTypes.types.get(field.getType().getSimpleName()));
+            return sb.toString();
         }
-        return sb.toString();
     }
 
     /**
      * Get the field name based if it has or not an annotation
-     * @param field Field
+     * @param  field Field
      * @return String
      */
     private String getFieldName(Field field) {
-        if (field.isAnnotationPresent(Column.class) && field.getAnnotation(Column.class).name() != null) {
+        if (field.isAnnotationPresent(Column.class) && !field.getAnnotation(Column.class).name().isEmpty()) {
             return field.getAnnotation(Column.class).name() + " ";
         } else {
             return field.getName() + " ";
@@ -205,8 +276,12 @@ public class Schema {
      *
      * @param o Object
      */
-    public void addPrimaryKey(Object o) {
+    private void addPrimaryKey(Object o) {
         PostgresSQL.getInstance().executeQuery(PostgresSQL.getInstance().alterTableAddPrimaryKeys(getClassNameForTable(o), getPrimaryKeyFields(o)));
+    }
+
+    public void addForeignKey(Object o) {
+        PostgresSQL.getInstance().executeQuery(foreignKeysAlterTable(o));
     }
 
     /**
@@ -277,19 +352,19 @@ public class Schema {
 
             Field[] fields = o.getClass().getDeclaredFields();
             String[] fieldName = new String[fields.length];
-            String[] values = new String[fields.length];
+            String[] values    = new String[fields.length];
 
             for (int i = 0; i < fields.length; i++) {
                 if (fields[i].isAnnotationPresent(PrimaryKey.class)) {
-                    fieldName[i] = fields[i].getName();
+                    if (fields[i].isAnnotationPresent(Column.class) && !fields[i].getAnnotation(Column.class).name().isEmpty()) {
+                        fieldName[i] = fields[i].getAnnotation(Column.class).name();
+                    } else {
+                        fieldName[i] = fields[i].getName();
+                    }
 
                     Method method = o.getClass().getDeclaredMethod("get" + toUpperCamelCase(fields[i].getName()));
 
-                    if (fields[i].getType().getSimpleName().equals("String")) {
-                        values[i] = String.valueOf(method.invoke(o));
-                    } else {
-                        values[i] = String.valueOf(method.invoke(o));
-                    }
+                    values[i] = String.valueOf(method.invoke(o));
                 }
             }
 
@@ -319,12 +394,20 @@ public class Schema {
                     Field[] fields = object.getClass().getDeclaredFields();
 
                     for (Field field : fields) {
-                        Method method = object.getClass().getMethod("set" + toUpperCamelCase(field.getName()), field.getType());
+                        Method method;
                         Object value;
-                        if (field.isAnnotationPresent(Column.class) && field.getAnnotation(Column.class).name() != null) {
-                            value = rs.getObject(field.getAnnotation(Column.class).name());
+                        if (field.isAnnotationPresent(OneToOne.class) && field.getAnnotation(OneToOne.class).target() != void.class){
+                            Object[] dbValue = {field.isAnnotationPresent(Column.class) && !field.getAnnotation(Column.class).name().isEmpty() ? rs.getObject(field.getAnnotation(Column.class).name()) : rs.getObject(field.getName())};
+                            value = fetch(field.getAnnotation(OneToOne.class).target(), new String[]{field.getAnnotation(OneToOne.class).column().toString()}, dbValue);
+                            method = object.getClass().getMethod("set" + toUpperCamelCase(field.getAnnotation(OneToOne.class).column()));
+
                         } else {
-                            value = rs.getObject(field.getName());
+                            method = object.getClass().getMethod("set" + toUpperCamelCase(field.getName()), field.getType());
+                            if (field.isAnnotationPresent(Column.class) && field.getAnnotation(Column.class).name() != null) {
+                                value = rs.getObject(field.getAnnotation(Column.class).name());
+                            }  else {
+                                value = rs.getObject(field.getName());
+                            }
                         }
 
                         if (value != null) {
@@ -355,7 +438,11 @@ public class Schema {
 
         for (int i = 0; i < fields.length; i++) {
             if (fields[i].isAnnotationPresent(PrimaryKey.class)) {
-                fieldName[i] = fields[i].getName();
+                if (fields[i].isAnnotationPresent(Column.class) && !fields[i].getAnnotation(Column.class).name().isEmpty()) {
+                    fieldName[i] = fields[i].getAnnotation(Column.class).name();
+                } else {
+                    fieldName[i] = fields[i].getName();
+                }
 
                 try {
                     Method method = o.getClass().getMethod("get" + toUpperCamelCase(fields[i].getName()));
@@ -422,14 +509,24 @@ public class Schema {
 
             try {
                 if (!fields[i].isAnnotationPresent(PrimaryKey.class)) {
-                    Method method1 = o.getClass().getMethod("get" + toUpperCamelCase(fields[i].getName()));
+                    Method method1;
+                    if (fields[i].isAnnotationPresent(OneToOne.class) && fields[i].getAnnotation(OneToOne.class).target() != null) {
+                        Object objeto = fields[i].getAnnotation(OneToOne.class).target();
+                        method1 = objeto.getClass().getMethod("get" + toUpperCamelCase(fields[i].getAnnotation(OneToOne.class).column()));
+                    } else {
+                        method1 = o.getClass().getMethod("get" + toUpperCamelCase(fields[i].getName()));
+                    }
                     Method method2 = object.getClass().getMethod("get" + toUpperCamelCase(fields[i].getName()));
 
                     Object value1  = method1.invoke(o);
                     Object value2  = method2.invoke(object);
 
                     if (value1 != value2 && value1 != null && value2 != null && !value1.equals("'null'") && !value2.equals("'null'")) {
-                        fieldsToChange[i] = fields[i].getName();
+                        if (fields[i].isAnnotationPresent(Column.class) && fields[i].getAnnotation(Column.class).name() != null) {
+                            fieldsToChange[i] = fields[i].getAnnotation(Column.class).name();
+                        } else {
+                            fieldsToChange[i] = fields[i].getName();
+                        }
                         if (fields[i].getType().getSimpleName().equals("String")) {
                             values[i] = "'" + value1 + "'";
                         } else {
@@ -440,7 +537,11 @@ public class Schema {
                     Object value = o.getClass().getMethod("get" + toUpperCamelCase(fields[i].getName())).invoke(o);
                     if (value != null) {
                         PKvalues[i] = String.valueOf(value);
-                        PKFields[i] = fields[i].getName();
+                        if (fields[i].isAnnotationPresent(Column.class) && !fields[i].getAnnotation(Column.class).name().isEmpty()) {
+                            PKFields[i] = fields[i].getAnnotation(Column.class).name();
+                        } else {
+                            PKFields[i] = fields[i].getName();
+                        }
                     }
                 }
             } catch (NoSuchMethodException | InvocationTargetException | IllegalAccessException e) {

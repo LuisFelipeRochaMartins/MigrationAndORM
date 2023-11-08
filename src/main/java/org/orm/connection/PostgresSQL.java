@@ -1,4 +1,4 @@
-package org.example.connection;
+package org.orm.connection;
 
 import io.github.cdimascio.dotenv.Dotenv;
 
@@ -64,6 +64,7 @@ public class PostgresSQL implements DatabaseInterface {
 
             try(Statement statement = connection.createStatement()) {
                 statement.execute(query);
+                System.out.println(query);
             }
         } catch (SQLException e) {
             System.out.println(query);
@@ -80,12 +81,9 @@ public class PostgresSQL implements DatabaseInterface {
     }
 
     public String alterTableAddPrimaryKeys(String tableName, String fields) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(DatabaseCommands.ALTER_TABLE.query).append(tableName)
-            .append(DatabaseCommands.ADD_CONSTRAINT.query).append(" PK_").append(tableName)
-            .append(DatabaseCommands.PRIMARY_KEY.query).append(" (").append(fields).append(")");
-
-        return sb.toString();
+        return DatabaseCommands.ALTER_TABLE.query + tableName +
+                DatabaseCommands.ADD_CONSTRAINT.query + " PK_" + tableName +
+                DatabaseCommands.PRIMARY_KEY.query + " (" + fields + ")";
     }
 
     public String save (String query) {
@@ -119,6 +117,12 @@ public class PostgresSQL implements DatabaseInterface {
         }
     }
 
+    /**
+     * Creates a Where clause.
+     * @param fieldsName String[]
+     * @param values     Object[]
+     * @return           String
+     */
     public String where(String[] fieldsName, Object[] values) {
         StringBuilder sb = new StringBuilder();
 
@@ -156,13 +160,10 @@ public class PostgresSQL implements DatabaseInterface {
     }
 
     public boolean delete(String tableName, String[] fieldNames, Object[] values) {
-        StringBuilder sb = new StringBuilder();
+        String sb = DatabaseCommands.DELETE.query + tableName +
+                where(fieldNames, values);
 
-        sb.append(DatabaseCommands.DELETE.query).append(tableName);
-
-        sb.append(where(fieldNames, values));
-
-        executeQuery(sb.toString());
+        executeQuery(sb);
         return true;
     }
 
@@ -174,7 +175,7 @@ public class PostgresSQL implements DatabaseInterface {
         sb.append(where(PKFields, PKValues));
 
         if (sb.toString().contains("SET")) {
-           executeQuery(sb.toString());
+            executeQuery(sb.toString());
             return true;
         }
         return false;

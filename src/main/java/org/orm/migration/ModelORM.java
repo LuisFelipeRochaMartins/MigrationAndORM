@@ -1,4 +1,4 @@
-package org.example.migration;
+package org.orm.migration;
 
 import java.util.List;
 
@@ -44,7 +44,6 @@ public class ModelORM {
      */
     public void save() {
         if (exists()) {
-            update();
             return;
         }
         Schema.getInstance().save(this);
@@ -73,7 +72,7 @@ public class ModelORM {
     }
 
     /**
-     *
+     * Updates a register in the database.
      *
      * @return boolean
      */
